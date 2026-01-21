@@ -10,7 +10,7 @@ export default defineConfig({
       // redirect request on /api to target specified
       '/api': {        
         target: 'https://localhost:7085/', // whether you're running your local api with kestrel or behind IIS Express, the port mind change
-        secure: false, // Do not verify SSL certificates
+        secure: false, // Do not verify SSL certificat
       },
     }
   },
