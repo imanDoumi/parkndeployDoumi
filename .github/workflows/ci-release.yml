@@ -33,7 +33,6 @@ jobs:
           name: frontend-build
           path: ./frontend/build
 
-  # Job Backend
   backend_release:
     name: Backend Release
     runs-on: ubuntu-latest
@@ -60,3 +59,4 @@ jobs:
         with:
           name: backend-build
           path: ./backend/publish
+
