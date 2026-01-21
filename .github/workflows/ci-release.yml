@@ -100,6 +100,7 @@ jobs:
     environment: production
     permissions:
       id-token: write  # Nécessaire pour l'authentification Azure
+      contents: read   # Nécessaire pour checkout
 
     outputs:
       appServiceName: ${{ steps.bicep_deploy.outputs.appServiceName }}
@@ -140,6 +141,8 @@ jobs:
     environment: production
     permissions:
       id-token: write  # Nécessaire pour l'authentification Azure
+      contents: read   # Nécessaire pour checkout
+      actions: read    # Nécessaire pour télécharger les artifacts
 
     steps:
       - name: Checkout repository
@@ -173,6 +176,8 @@ jobs:
     environment: production
     permissions:
       id-token: write  # Nécessaire pour l'authentification Azure
+      contents: read   # Nécessaire pour checkout
+      actions: read    # Nécessaire pour télécharger les artifacts
 
     steps:
       - name: Checkout repository
