@@ -45,6 +45,10 @@ jobs:
         with:
           dotnet-version: '9.0.x'
 
+      - name: Restore dependencies
+        run: dotnet restore
+        working-directory: ./backend
+
       - name: Publish .NET app
         run: dotnet publish -c Release --propertyublishDir=publish
         working-directory: ./backend  
