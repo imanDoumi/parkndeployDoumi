@@ -18,11 +18,16 @@ function App() {
 
   console.log(parkingName)
 
+  const appVersion = import.meta.env.VITE_APP_VERSION || 'dev';
+
   return (
     <div className="flex flex-col gap-5 items-center">
-      <h1 className="text-2xl font-bold text-center">
-        Where can I Park in Angers ? 👀
-      </h1>
+      <div className="w-full flex flex-col items-center gap-2">
+        <h1 className="text-2xl font-bold text-center">
+          Where can I Park in Angers ? 👀
+        </h1>
+        <span className="text-sm text-gray-500">Version: {appVersion}</span>
+      </div>
       <ParkingListFilters
         onChange={(parkingName: string) => {
           console.log(parkingName);

@@ -4,6 +4,14 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'  # Déclenche sur les tags de version (ex: v1.0.0, v2.3.1)
+
+permissions:
+  id-token: write
+
+env:
+  AZURE_RG_NAME: rg-${{ vars.PROJECT_NAME }}-${{ vars.AZURE_RESOURCE_IDENTIFIER }}
 
 jobs:
   # Job CI Frontend - Build et création de l'artifact
@@ -13,6 +21,23 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Nécessaire pour récupérer les tags
+
+      - name: Extract version from tag
+        id: extract_version
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            # Extraire la version du tag (ex: v1.0.0 -> 1.0.0)
+            VERSION=${GITHUB_REF#refs/tags/v}
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "Version extraite: $VERSION"
+          else
+            # Si c'est un push sur main, utiliser "dev"
+            VERSION="dev"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "Version: $VERSION (build de développement)"
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -26,6 +51,8 @@ jobs:
       - name: Build React app
         run: npm run build
         working-directory: ./frontend
+        env:
+          VITE_APP_VERSION: ${{ steps.extract_version.outputs.version }}
 
       - name: Upload frontend artifact
         uses: actions/upload-artifact@v4
@@ -67,6 +94,7 @@ jobs:
     name: Deploy Application
     runs-on: ubuntu-latest
     needs: [frontend, backend]  # Dépend des deux jobs CI
+    environment: production
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -76,26 +104,41 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: frontend-build
-          path: ./frontend_dist
+          path: ./frontend/dist
 
       # Télécharger l'artifact Backend
       - name: Download backend artifact
         uses: actions/download-artifact@v4
         with:
           name: backend-publish
-          path: ./backend_publish
+          path: ./backend/ParkNDeploy.Api/publish
 
-      # Vérification des fichiers téléchargés
-      - name: List Frontend files
-        run: ls -la ./frontend_dist
+      # Déploiement Backend sur Azure App Service
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          enable-AzPSSession: true
 
-      - name: List Backend files
-        run: ls -la ./backend_publish
+      - name: Deploy backend to App Service
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ vars.PROJECT_NAME }}-app-${{ vars.AZURE_RESOURCE_IDENTIFIER }}
+          package: ./backend/ParkNDeploy.Api/publish
 
-      # Ici vous pouvez ajouter les étapes de déploiement réelles
-      # Exemple : déploiement sur Azure, Docker, etc.
-      - name: Deploy Frontend
-        run: echo "Déploiement Frontend ici..."
+      # Déploiement Frontend sur Azure Static Web App
+      - name: Get Static Web App deployment token
+        run: |
+          SWA_DEPLOYMENT_TOKEN=$(az staticwebapp secrets list -n ${{ vars.PROJECT_NAME }}-swa-${{ vars.AZURE_RESOURCE_IDENTIFIER }} -g ${{ env.AZURE_RG_NAME }} -o tsv --query properties.apiKey)
+          echo SWA_DEPLOYMENT_TOKEN=$SWA_DEPLOYMENT_TOKEN >> $GITHUB_ENV
 
-      - name: Deploy Backend
-        run: echo "Déploiement Backend ici..."
+      - name: Deploy frontend to Static Web App
+        uses: azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ env.SWA_DEPLOYMENT_TOKEN }}
+          app_location: frontend/dist
+          action: upload
+          skip_app_build: true
+          skip_api_build: true
