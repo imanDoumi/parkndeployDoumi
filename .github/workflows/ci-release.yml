@@ -1,8 +1,9 @@
 name: CI Release
 
-# Ce workflow peut être déclenché manuellement pour une release
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   
