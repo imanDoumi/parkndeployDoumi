@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Job Frontend
+  
   frontend_release:
     name: Frontend Release
     runs-on: ubuntu-latest
