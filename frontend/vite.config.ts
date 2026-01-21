@@ -25,7 +25,7 @@ export default defineConfig({
     },
   },
   define: {
-    // Version is read from package.json - source of truth for version
+    // Version is read from package.json - source of truth for versi
     APP_VERSION: JSON.stringify(appVersion),
   },
   plugins: [react()],
