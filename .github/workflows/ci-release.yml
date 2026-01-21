@@ -89,12 +89,82 @@ jobs:
           path: ./backend/ParkNDeploy.Api/publish
           retention-days: 1
 
-  # Job CD - Déploiement (déclenché automatiquement après les jobs CI)
-  deploy:
-    name: Deploy Application
+  # Job CD - Déploiement de l'infrastructure
+  deploy_infrastructure:
+    name: Deploy Infrastructure
     runs-on: ubuntu-latest
-    needs: [frontend, backend]  # Dépend des deux jobs CI
+    needs: [frontend, backend]  # Attend que les builds CI soient terminés
     environment: production
+
+    outputs:
+      appServiceName: ${{ steps.bicep_deploy.outputs.appServiceName }}
+      staticWebAppName: ${{ steps.bicep_deploy.outputs.staticWebAppName }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          enable-AzPSSession: true
+
+      - name: Create resource group if not exists
+        run: |
+          az group show --name ${{ env.AZURE_RG_NAME }} ||
+          az group create --name ${{ env.AZURE_RG_NAME }} --location ${{ secrets.AZURE_REGION }}
+
+      - name: Deploy bicep
+        id: bicep_deploy
+        uses: azure/arm-deploy@v2
+        with:
+          subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION }}
+          region: ${{ secrets.AZURE_REGION }}
+          template: ./infrastructure/main.bicep
+          parameters: project=${{ vars.PROJECT_NAME }} location=${{ secrets.AZURE_REGION }} swaLocation=${{ secrets.AZURE_SWA_REGION }} identifier=${{ vars.AZURE_RESOURCE_IDENTIFIER }}
+          resourceGroupName: ${{ env.AZURE_RG_NAME }}
+
+  # Job CD - Déploiement Backend (en parallèle avec deploy_frontend)
+  deploy_backend:
+    name: Deploy Backend
+    runs-on: ubuntu-latest
+    needs: [deploy_infrastructure, backend]  # Dépend de l'infrastructure et du build backend
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Télécharger l'artifact Backend
+      - name: Download backend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-publish
+          path: ./backend/ParkNDeploy.Api/publish
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy backend to App Service
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ needs.deploy_infrastructure.outputs.appServiceName }}
+          package: ./backend/ParkNDeploy.Api/publish
+
+  # Job CD - Déploiement Frontend (en parallèle avec deploy_backend)
+  deploy_frontend:
+    name: Deploy Frontend
+    runs-on: ubuntu-latest
+    needs: [deploy_infrastructure, frontend]  # Dépend de l'infrastructure et du build frontend
+    environment: production
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -106,32 +176,16 @@ jobs:
           name: frontend-build
           path: ./frontend/dist
 
-      # Télécharger l'artifact Backend
-      - name: Download backend artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: backend-publish
-          path: ./backend/ParkNDeploy.Api/publish
-
-      # Déploiement Backend sur Azure App Service
       - name: Login to Azure
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          enable-AzPSSession: true
 
-      - name: Deploy backend to App Service
-        uses: azure/webapps-deploy@v2
-        with:
-          app-name: ${{ vars.PROJECT_NAME }}-app-${{ vars.AZURE_RESOURCE_IDENTIFIER }}
-          package: ./backend/ParkNDeploy.Api/publish
-
-      # Déploiement Frontend sur Azure Static Web App
       - name: Get Static Web App deployment token
         run: |
-          SWA_DEPLOYMENT_TOKEN=$(az staticwebapp secrets list -n ${{ vars.PROJECT_NAME }}-swa-${{ vars.AZURE_RESOURCE_IDENTIFIER }} -g ${{ env.AZURE_RG_NAME }} -o tsv --query properties.apiKey)
+          SWA_DEPLOYMENT_TOKEN=$(az staticwebapp secrets list -n ${{ needs.deploy_infrastructure.outputs.staticWebAppName }} -g ${{ env.AZURE_RG_NAME }} -o tsv --query properties.apiKey)
           echo SWA_DEPLOYMENT_TOKEN=$SWA_DEPLOYMENT_TOKEN >> $GITHUB_ENV
 
       - name: Deploy frontend to Static Web App
